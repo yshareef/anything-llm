@@ -633,3 +633,6 @@ does not extend the close button beyond the viewport. */
 .upload-modal-arrow {
   margin-top: 25%;
 }
+
+
+@import '~sweetalert2/dist/sweetalert2.min.css';

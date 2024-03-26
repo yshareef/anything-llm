@@ -1,3 +1,7 @@
+const express = require('express');
+const router = express.Router();
+const EventEmitter = require('events');
+
 const { v4: uuidv4 } = require("uuid");
 const { DocumentManager } = require("../DocumentManager");
 const { WorkspaceChats } = require("../../models/workspaceChats");
@@ -11,6 +15,25 @@ const {
 } = require("./index");
 
 const VALID_CHAT_MODE = ["chat", "query"];
+
+const { checkForSensitiveData } = require('../helpers/sensitiveDataHandler');
+const userResponseEmitter = new EventEmitter();
+const userResponseMap = new Map();
+
+
+const handleUserResponse = (uuid, abort) => {
+  const responsePromise = userResponseMap.get(uuid);
+  if (responsePromise) {
+    responsePromise.resolve({ abort });
+    userResponseMap.delete(uuid);
+  }
+};
+
+router.post('/user-response', async (req, res) => {
+  const { uuid, abort } = req.body;
+  handleUserResponse(uuid, abort);
+  res.status(200).json({ success: true });
+});
 
 async function streamChatWithWorkspace(
   response,
@@ -51,6 +74,45 @@ async function streamChatWithWorkspace(
     });
     return;
   }
+
+// check for sensitive data
+  const { containsSensitiveData, redactedMessage } = checkForSensitiveData(message);
+
+  if (containsSensitiveData) {
+    writeResponseChunk(response, {
+      id: uuid,
+      type: "sensitiveDataDetected",
+      textResponse: null,
+      sources: [],
+      close: false,
+      error: null,
+      redactedMessage,
+    });
+
+    const userResponsePromise = new Promise((resolve, reject) => {
+      userResponseMap.set(uuid, { resolve, reject });
+    });
+
+    const { abort } = await userResponsePromise;
+
+    if (abort) {
+      writeResponseChunk(response, {
+        id: uuid,
+        type: "abort",
+        textResponse: null,
+        sources: [],
+        close: true,
+        error: "User aborted due to sensitive data.",
+      });
+      return;
+    } else {
+      // Proceed with the redacted message
+      message = redactedMessage;
+ 
+    }
+  }
+
+
 
   const messageLimit = workspace?.openAiHistory || 20;
   const hasVectorizedSpace = await VectorDb.hasNamespace(workspace.slug);
@@ -207,7 +269,7 @@ async function streamChatWithWorkspace(
   });
   return;
 }
-
+module.exports = router;
 module.exports = {
   VALID_CHAT_MODE,
   streamChatWithWorkspace,

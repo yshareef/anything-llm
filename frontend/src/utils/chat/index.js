@@ -1,7 +1,8 @@
 export const ABORT_STREAM_EVENT = "abort-chat-stream";
+import Swal from 'sweetalert2';
 
 // For handling of chat responses in the frontend by their various types.
-export default function handleChat(
+export default  function handleChat(
   chatResult,
   setLoadingResponse,
   setChatHistory,
@@ -16,6 +17,7 @@ export default function handleChat(
     error,
     close,
     chatId = null,
+    redactedMessage
   } = chatResult;
 
   if (type === "abort") {
@@ -127,7 +129,39 @@ export default function handleChat(
     setChatHistory([..._chatHistory]);
     setLoadingResponse(false);
   }
+  else if (type === "sensitiveDataDetected") {
+    // Prompt the user with a modal or dialog box
+    const userResponse = await promptUserForSensitiveData(redactedMessage);
+
+    if (userResponse.abort) {
+      handleChat({
+        uuid,
+        type: "abort",
+        textResponse: null,
+        sources: [],
+        close: true,
+        error: "User aborted due to sensitive data.",
+      });
+    } else {
+      // Call streamChat again with the redacted message
+      streamChat({ slug }, redactedMessage, handleChat);
+    }
+  }
+
 }
+
+// Implement the promptUserForSensitiveData function
+const promptUserForSensitiveData = async (redactedMessage) => {
+  const { isConfirmed } = await Swal.fire({
+    title: 'Sensitive Data Detected',
+    html: `Your message contains sensitive data:<br><br>${redactedMessage}`,
+    showCancelButton: true,
+    confirmButtonText: 'Proceed',
+    cancelButtonText: 'Abort',
+  });
+
+  return { abort: !isConfirmed };
+};
 
 export function chatPrompt(workspace) {
   return (
