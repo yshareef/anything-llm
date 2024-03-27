@@ -21,6 +21,8 @@ const { extensionEndpoints } = require("./endpoints/extensions");
 const { bootHTTP, bootSSL } = require("./utils/boot");
 const { workspaceThreadEndpoints } = require("./endpoints/workspaceThreads");
 const { documentEndpoints } = require("./endpoints/document");
+const { userChoiceEmitter, handleUserChoiceRoute } = require('./utils/chats/stream.js');
+
 const app = express();
 const apiRouter = express.Router();
 const FILE_LIMIT = "3GB";
@@ -50,6 +52,20 @@ developerEndpoints(app, apiRouter);
 
 // Externally facing embedder endpoints
 embeddedEndpoints(apiRouter);
+
+// Set up the route to receive the user's choice
+apiRouter.post('/user-choice', handleUserChoiceRoute);
+
+// Define a test route handler function
+function testRouteHandler(req, res) {
+  res.status(200).json({ success: true, message: "Test route hit successfully" });
+}
+
+// Define a test route for GET requests
+apiRouter.get('/test', testRouteHandler);
+
+// Define a test route for POST requests
+apiRouter.post('/test', testRouteHandler);
 
 apiRouter.post("/v/:command", async (request, response) => {
   try {

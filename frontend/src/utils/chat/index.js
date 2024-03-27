@@ -1,8 +1,8 @@
 export const ABORT_STREAM_EVENT = "abort-chat-stream";
-import Swal from 'sweetalert2';
+import { promptUserForSensitiveData } from './sensitiveDataHandler.js';
 
 // For handling of chat responses in the frontend by their various types.
-export default  function handleChat(
+export default async function handleChat(
   chatResult,
   setLoadingResponse,
   setChatHistory,
@@ -131,37 +131,55 @@ export default  function handleChat(
   }
   else if (type === "sensitiveDataDetected") {
     // Prompt the user with a modal or dialog box
-    const userResponse = await promptUserForSensitiveData(redactedMessage);
+    // const userResponse = await promptUserForSensitiveData(redactedMessage);
 
-    if (userResponse.abort) {
-      handleChat({
-        uuid,
-        type: "abort",
-        textResponse: null,
-        sources: [],
-        close: true,
-        error: "User aborted due to sensitive data.",
-      });
-    } else {
-      // Call streamChat again with the redacted message
-      streamChat({ slug }, redactedMessage, handleChat);
-    }
+    setLoadingResponse(false);
+    const { abort } = await promptUserForSensitiveData(redactedMessage);
+    console.log(abort);
+    console.log(chatResult);
+    // Send a POST request to the backend with the user's choice
+    sendUserChoiceToBackend(abort ? 'abort' : 'continue', chatResult.id);
+
+    
+    // if (userResponse.abort) {
+    //   handleChat({
+    //     uuid: chatResult.uuid,
+    //     type: "abort",
+    //     textResponse: null,
+    //     sources: [],
+    //     close: true,
+    //     error: "User aborted due to sensitive data.",
+    //   });
+    //   console.log("abort");
+
+    // } else {
+    //     // Call streamChat again with the redacted message
+    //   // streamChat({ slug }, redactedMessage, handleChat);
+    //   console.log("others ");
+    //   // Resend the message with the redacted data
+    //   streamChat({ slug: chatResult.workspace.slug }, redactedMessage, handleChat);
+    // }
   }
 
 }
-
-// Implement the promptUserForSensitiveData function
-const promptUserForSensitiveData = async (redactedMessage) => {
-  const { isConfirmed } = await Swal.fire({
-    title: 'Sensitive Data Detected',
-    html: `Your message contains sensitive data:<br><br>${redactedMessage}`,
-    showCancelButton: true,
-    confirmButtonText: 'Proceed',
-    cancelButtonText: 'Abort',
-  });
-
-  return { abort: !isConfirmed };
-};
+ 
+function sendUserChoiceToBackend(userChoice, uuid) {
+  // Send a POST request to the backend with the user's choice
+  // For example, using fetch:
+  fetch('http://localhost:3001/api/user-choice', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userChoice, uuid }),
+  })
+    .then(response => {
+      // Handle the response from the backend if needed
+    })
+    .catch(error => {
+      console.error('Error sending user choice:', error);
+    });
+}
 
 export function chatPrompt(workspace) {
   return (

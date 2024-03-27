@@ -1,5 +1,6 @@
-const express = require('express');
-const router = express.Router();
+// Import a logging library like Winston
+const winston = require('winston');
+
 const EventEmitter = require('events');
 
 const { v4: uuidv4 } = require("uuid");
@@ -17,23 +18,45 @@ const {
 const VALID_CHAT_MODE = ["chat", "query"];
 
 const { checkForSensitiveData } = require('../helpers/sensitiveDataHandler');
-const userResponseEmitter = new EventEmitter();
-const userResponseMap = new Map();
 
+//implement waitForUserChoice function
+const userChoiceEmitter = new EventEmitter();
 
-const handleUserResponse = (uuid, abort) => {
-  const responsePromise = userResponseMap.get(uuid);
-  if (responsePromise) {
-    responsePromise.resolve({ abort });
-    userResponseMap.delete(uuid);
-  }
-};
+// async function waitForUserChoice(response, uuid) {
+//   return new Promise((resolve, reject) => {
+//     const timeout = setTimeout(() => {
+//       reject(new Error('Timed out waiting for user choice'));
+//       userChoiceEmitter.removeAllListeners(`userChoice:${uuid}`);
+//     }, 30000); // Set a reasonable timeout, e.g., 30 seconds
 
-router.post('/user-response', async (req, res) => {
-  const { uuid, abort } = req.body;
-  handleUserResponse(uuid, abort);
-  res.status(200).json({ success: true });
-});
+//     const handleUserChoice = (userChoice) => {
+//       clearTimeout(timeout);
+//       userChoiceEmitter.removeAllListeners(`userChoice:${uuid}`);
+//       resolve(userChoice);
+//     };
+
+//     userChoiceEmitter.on(`userChoice:${uuid}`, handleUserChoice);
+//   });
+// }
+// // Middleware or route handler to receive the user's choice from the frontend
+// app.post('/api/user-choice', (req, res) => {
+//   const { userChoice, uuid } = req.body;
+
+//   // Emit the user's choice event
+//   userChoiceEmitter.emit(`userChoice:${uuid}`, userChoice);
+
+//   res.status(200).json({ message: 'User choice received' });
+// });
+
+// function handleUserChoiceRoute(req, res) {
+//   const { userChoice, uuid } = req.body;
+
+//   // Emit the user's choice event
+//   userChoiceEmitter.emit(`userChoice:${uuid}`, userChoice);
+
+//   res.status(200).json({ message: 'User choice received' });
+// }
+
 
 async function streamChatWithWorkspace(
   response,
@@ -82,34 +105,29 @@ async function streamChatWithWorkspace(
     writeResponseChunk(response, {
       id: uuid,
       type: "sensitiveDataDetected",
-      textResponse: null,
-      sources: [],
       close: false,
       error: null,
       redactedMessage,
     });
 
-    const userResponsePromise = new Promise((resolve, reject) => {
-      userResponseMap.set(uuid, { resolve, reject });
-    });
+    // Wait for a POST request from the frontend with the user's choice
+    const userChoice = await waitForUserChoice(response, uuid);
 
-    const { abort } = await userResponsePromise;
-
-    if (abort) {
+    if (userChoice === 'abort') {
       writeResponseChunk(response, {
         id: uuid,
         type: "abort",
         textResponse: null,
         sources: [],
         close: true,
-        error: "User aborted due to sensitive data.",
+        error: `This message was moderated and will not be allowed. Violations for sensitve data found.`,
       });
       return;
-    } else {
-      // Proceed with the redacted message
-      message = redactedMessage;
- 
     }
+    else{
+      message = redactedMessage ; 
+      console.log(message);
+    };
   }
 
 
@@ -269,8 +287,53 @@ async function streamChatWithWorkspace(
   });
   return;
 }
-module.exports = router;
+
+async function waitForUserChoice(response, uuid) {
+  // Log start of waiting for user choice
+  winston.info(`Waiting for user choice with UUID: ${uuid}`);
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timed out waiting for user choice'));
+      userChoiceEmitter.removeAllListeners(`userChoice:${uuid}`);
+      // Log timeout error
+      winston.error('Timed out waiting for user choice');
+    }, 20000); // Set a reasonable timeout, e.g., 20 seconds
+
+    const handleUserChoice = (userChoice) => {
+      clearTimeout(timeout);
+      userChoiceEmitter.removeAllListeners(`userChoice:${uuid}`);
+      // Log user choice
+      winston.info(`User choice received for UUID ${uuid}: ${userChoice}`);
+
+      resolve(userChoice);
+    };
+
+    // Error handling for event emitter
+    userChoiceEmitter.on(`userChoice:${uuid}`, handleUserChoice);
+
+    // Error handling for event emitter error event
+    userChoiceEmitter.on('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+
+    // Log error
+    winston.error(`Error occurred while waiting for user choice: ${error.message}`);
+
+  });
+});
+}
+
 module.exports = {
+  userChoiceEmitter,
+  handleUserChoiceRoute: (req, res) => {
+    const { userChoice, uuid } = req.body;
+    // Emit the user's choice event
+    userChoiceEmitter.emit(`userChoice:${uuid}`, userChoice);
+    console.log(`userChoiceuuid:${uuid}`)
+    console.log(`userChoice:${userChoice}`)
+    res.status(200).json({ message: 'User choice received 4' });
+  },
   VALID_CHAT_MODE,
   streamChatWithWorkspace,
 };

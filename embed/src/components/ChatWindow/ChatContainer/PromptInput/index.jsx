@@ -53,7 +53,7 @@ export default function PromptInput({
                 }}
                 value={message}
                 className="cursor-text max-h-[100px] text-[14px] mx-2 py-2 w-full text-black bg-transparent placeholder:text-slate-800/60 resize-none active:outline-none focus:outline-none flex-grow"
-                placeholder={"Send a message"}
+                placeholder={" ya bro"}
               />
               <button
                 ref={formRef}

@@ -86,25 +86,6 @@ const Workspace = {
       handleChat({ id: v4(), type: "stopGeneration" });
     });
 
-    const sendUserResponse = async (userResponse) => {
-      const response = await fetch(`${API_BASE}/user-response`, {
-        method: "POST",
-        headers: baseHeaders(),
-        body: JSON.stringify(userResponse),
-      });
-    
-      if (!response.ok) {
-        console.error("Failed to send user response to server.");
-      }
-    };
-
-    // const sendUserResponse = (userResponse) => {
-    //   const encoder = new TextEncoder();
-    //   const data = JSON.stringify({ uuid: userResponse.uuid, abort: userResponse.abort });
-    //   const buffer = encoder.encode(data);
-    //   response.dispatchEvent(new MessageEvent("message", { data: buffer }));
-    // };
-
     await fetchEventSource(`${API_BASE}/workspace/${slug}/stream-chat`, {
       method: "POST",
       body: JSON.stringify({ message }),
@@ -145,15 +126,7 @@ const Workspace = {
       async onmessage(msg) {
         try {
           const chatResult = JSON.parse(msg.data);
-          if (chatResult.type === "sensitiveDataDetected") {
-            const userResponse = await promptUserForSensitiveData(chatResult);
-            await sendUserResponse({ uuid: chatResult.uuid, abort: userResponse.abort });
-            if (!userResponse.abort) {
-              handleChat(chatResult);
-            }
-          } else {
-            handleChat(chatResult);
-          }
+          handleChat(chatResult);
         } catch {}
       },
       onerror(err) {
